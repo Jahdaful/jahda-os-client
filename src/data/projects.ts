@@ -76,7 +76,7 @@ export const projectsData: Project[] = [
   },
   {
     id: "jahda-the-helper",
-    name: "JAHDA HELPER",
+    name: "JAHDA THE HELPER",
     language: "TypeScript",
     status: "Active",
     description: "Personal AI command center — always available, always learning.",

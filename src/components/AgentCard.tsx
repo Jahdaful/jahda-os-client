@@ -13,7 +13,6 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
   const [displayProgress, setDisplayProgress] = useState(0);
   const animatedRef = useRef(false);
 
-  // Count up progress on mount (once)
   useEffect(() => {
     if (animatedRef.current) return;
     animatedRef.current = true;
@@ -41,25 +40,25 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
       style={{ "--card-color": project.color } as React.CSSProperties}
       initial={{ opacity: 0, y: 48 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.55,
-        delay: index * 0.1,
-        ease: [0.22, 1, 0.36, 1],
-      }}
+      transition={{ duration: 0.55, delay: index * 0.1, ease: [0.22, 1, 0.36, 1] }}
       whileHover={{ scale: 1.02, y: -5 }}
       whileTap={{ scale: 0.98 }}
     >
-      {/* Coloured top stripe */}
       <div className="agent-card__stripe" />
-
-      {/* Hover glow layer */}
       <div className="agent-card__glow" />
 
       {/* Header */}
       <div className="agent-card__header">
         <motion.span
           className="agent-card__status-dot"
-          animate={{ opacity: [1, 0.4, 1], boxShadow: [`0 0 6px ${project.color}`, `0 0 2px ${project.color}`, `0 0 6px ${project.color}`] }}
+          animate={{
+            opacity: [1, 0.4, 1],
+            boxShadow: [
+              `0 0 6px ${project.color}`,
+              `0 0 2px ${project.color}`,
+              `0 0 6px ${project.color}`,
+            ],
+          }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
           style={{ background: project.color }}
         />
@@ -90,33 +89,56 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
         />
       </div>
 
-      {/* Meta */}
-      <div className="agent-card__meta">
-        <span className="agent-card__activity">⏱ {project.lastActivity}</span>
-        <span className="agent-card__bugs bugs-clear">✓ Clear</span>
+      {/* Repo + Branch metadata (restored from original) */}
+      <div className="agent-card__data-rows">
+        <div className="agent-card__data-row">
+          <span className="agent-card__data-label">REPO</span>
+          <a
+            href={`https://${project.repo}`}
+            target="_blank"
+            rel="noreferrer"
+            className="agent-card__data-link"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {project.repo}
+          </a>
+        </div>
+        <div className="agent-card__data-row">
+          <span className="agent-card__data-label">BRANCH</span>
+          <code className="agent-card__data-code">{project.branch}</code>
+        </div>
+        <div className="agent-card__data-row">
+          <span className="agent-card__data-label">BUGS</span>
+          <span className={project.bugs === 0 ? "bugs-clear" : "bugs-open"}>
+            {project.bugs === 0 ? "✓ Clear" : `${project.bugs} open`}
+          </span>
+        </div>
       </div>
 
-      {/* Actions */}
-      <div className="agent-card__actions">
-        <motion.a
-          href={project.url}
-          target="_blank"
-          rel="noreferrer"
-          className="agent-card__launch"
-          whileHover={{ x: 3 }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          Launch →
-        </motion.a>
-        <motion.button
-          className="agent-card__voice-btn"
-          onClick={() => onVoiceIntro(project)}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9 }}
-          title={`Voice intro: ${project.name}`}
-        >
-          🎙️
-        </motion.button>
+      {/* Footer: last activity + actions */}
+      <div className="agent-card__footer">
+        <span className="agent-card__activity">⏱ {project.lastActivity}</span>
+        <div className="agent-card__actions">
+          <motion.a
+            href={project.url}
+            target="_blank"
+            rel="noreferrer"
+            className="agent-card__launch"
+            whileHover={{ x: 3 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            Launch →
+          </motion.a>
+          <motion.button
+            className="agent-card__voice-btn"
+            onClick={() => onVoiceIntro(project)}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            title={`Voice intro: ${project.name}`}
+          >
+            🎙️
+          </motion.button>
+        </div>
       </div>
     </motion.article>
   );

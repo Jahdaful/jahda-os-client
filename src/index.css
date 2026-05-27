@@ -526,18 +526,72 @@ body {
   box-shadow: 0 0 8px currentColor;
 }
 
-/* Meta */
-.agent-card__meta {
+/* Repo / Branch / Bugs data rows (restored from original) */
+.agent-card__data-rows {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 0;
+  border-top: 1px solid var(--glass-b);
+  margin-bottom: 12px;
+}
+
+.agent-card__data-row {
+  display: flex;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.agent-card__data-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  width: 46px;
+  flex-shrink: 0;
+}
+
+.agent-card__data-link {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s;
+}
+
+.agent-card__data-link:hover { color: var(--accent); text-decoration: underline; }
+
+.agent-card__data-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.18);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.bugs-clear { color: var(--success); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+.bugs-open  { color: var(--danger);  font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+
+/* Footer: activity + actions */
+.agent-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-card__activity {
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   color: var(--text-dim);
+  flex-shrink: 0;
 }
-
-.bugs-clear { color: var(--success); }
 
 /* Actions */
 .agent-card__actions {
