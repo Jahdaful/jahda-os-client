@@ -110,6 +110,7 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
   const startListeningRef = useRef<(override?: boolean) => void>(() => {});
   const wakeAndListenRef = useRef<() => void>(() => {});
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const speakingRef = useRef(false);
 
   // Keep TTS engine alive — Chrome freezes synthesis after ~15 min idle or in background
   useEffect(() => {
@@ -157,11 +158,13 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
     (segments: string[], onDone?: () => void) => {
       synth.cancel();
       setSpeaking(true);
+      speakingRef.current = true;
       onVoiceResponse(segments.join(" "));
 
       const enqueue = (i: number) => {
         if (i >= segments.length) {
           setSpeaking(false);
+          speakingRef.current = false;
           onDone?.();
           // Re-open mic quickly after responding in conversation mode
           if (conversationModeRef.current) {
@@ -353,14 +356,16 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
       const t = transcript.toLowerCase().trim();
       const pick = (opts: string[]) => opts[Math.floor(Math.random() * opts.length)];
 
-      // ── Summon / wake word — instantly interrupt and listen ──────────────
+      // ── Summon / wake word — only when COS isn't already speaking ───────
       if (
-        t === "assistant" || t === "agent" || t === "cos" || t === "chief" ||
-        has(t, "hey assistant", "ok assistant", "okay assistant", "hi assistant",
-               "yo assistant", "hey agent", "hey cos", "yo cos", "hey chief",
-               "chief of staff", "pwal os", "p wal",
-               "are you there", "you there", "you listening", "you awake",
-               "stop talking", "stop and listen", "be quiet", "quiet")
+        !speakingRef.current && (
+          t === "assistant" || t === "agent" || t === "cos" || t === "chief" ||
+          has(t, "hey assistant", "ok assistant", "okay assistant", "hi assistant",
+                 "yo assistant", "hey agent", "hey cos", "yo cos", "hey chief",
+                 "chief of staff", "pwal os", "p wal",
+                 "are you there", "you there", "you listening", "you awake",
+                 "stop talking", "stop and listen", "be quiet", "quiet")
+        )
       ) {
         wakeAndListenRef.current();
         return;

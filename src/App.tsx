@@ -194,11 +194,9 @@ export default function App() {
     }
   }, [sleeping, greet, wakeAndListen]);
 
-  // Double clap → wake / interrupt. Voice interrupt → stop agent mid-sentence.
+  // Double clap → wake / interrupt
   useClapDetect({
     onDoubleclap: wake,
-    onVoiceInterrupt: wakeAndListen,
-    interruptEnabled: speaking,
     enabled: true,
   });
 
