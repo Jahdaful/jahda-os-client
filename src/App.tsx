@@ -189,10 +189,11 @@ export default function App() {
       setMicActive(true);
       setTimeout(() => setWakeRipple(false), 1200);
       greet();
-    } else {
-      wakeAndListen(); // interrupt speech + snap to listening
+    } else if (!speaking) {
+      // Only interrupt when COS isn't speaking — prevents clap detection triggering on TTS audio
+      wakeAndListen();
     }
-  }, [sleeping, greet, wakeAndListen]);
+  }, [sleeping, speaking, greet, wakeAndListen]);
 
   // Double clap → wake / interrupt
   useClapDetect({
