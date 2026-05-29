@@ -230,31 +230,40 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
     recognitionRef.current?.stop();
 
     const rec = new SR();
-    rec.continuous = false;
+    rec.continuous = true;       // never stops — no restart loop needed
     rec.interimResults = false;
     rec.lang = "en-US";
 
     rec.onstart = () => setListening(true);
     rec.onend = () => {
       setListening(false);
-      // Always restart in conversation mode so listening never goes dead
+      // Continuous mode rarely fires onend — restart when it does
       if (conversationModeRef.current) {
-        setTimeout(() => startListeningRef.current(false), 200);
+        setTimeout(() => startListeningRef.current(false), 300);
       }
     };
     rec.onerror = (e: { error: string }) => {
       setListening(false);
-      // Restart on any recoverable error — not-allowed means mic denied, don't retry
-      if (conversationModeRef.current && e.error !== "not-allowed") {
-        setTimeout(() => startListeningRef.current(false), 400);
+      if (e.error === "not-allowed") {
+        onVoiceResponse("Microphone access is blocked. Please click the lock icon in your browser address bar, allow the microphone, then refresh.");
+        speak("Microphone access is blocked. Please allow microphone access in your browser settings and refresh the page.");
+        return;
+      }
+      // Restart fresh on any other error
+      if (conversationModeRef.current) {
+        setTimeout(() => startListeningRef.current(false), 500);
       }
     };
     rec.onresult = (e: SpeechRecognitionEvent) => {
-      processCommandRef.current(e.results[0][0].transcript);
+      // Always take the most recent final result
+      const last = e.results[e.results.length - 1];
+      if (last && last.isFinal) {
+        processCommandRef.current(last[0].transcript);
+      }
     };
 
     recognitionRef.current = rec;
-    rec.start();
+    try { rec.start() } catch { /* already starting */ }
   }, [speaking, speak]);
 
   // Keep a stable ref so speakQueue closure and onerror can call startListening
