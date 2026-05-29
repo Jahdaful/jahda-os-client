@@ -212,7 +212,7 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         `What are we doing today?`,
       ]),
     ], () => {
-      setTimeout(() => startListeningRef.current(), 600);
+      setTimeout(() => startListeningRef.current(true), 300);
     });
   }, [speakQueue, projects]);
 
@@ -235,12 +235,18 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
     rec.lang = "en-US";
 
     rec.onstart = () => setListening(true);
-    rec.onend = () => setListening(false);
+    rec.onend = () => {
+      setListening(false);
+      // Always restart in conversation mode so listening never goes dead
+      if (conversationModeRef.current) {
+        setTimeout(() => startListeningRef.current(false), 200);
+      }
+    };
     rec.onerror = (e: { error: string }) => {
       setListening(false);
-      // Auto-retry on no-speech — keeps conversation alive
-      if (e.error === "no-speech" && conversationModeRef.current) {
-        setTimeout(() => startListeningRef.current(false), 150);
+      // Restart on any recoverable error — not-allowed means mic denied, don't retry
+      if (conversationModeRef.current && e.error !== "not-allowed") {
+        setTimeout(() => startListeningRef.current(false), 400);
       }
     };
     rec.onresult = (e: SpeechRecognitionEvent) => {
