@@ -103,6 +103,7 @@ function pingTTS(synth: SpeechSynthesis) {
 export function useVoiceAssistant({ projects, onHighlightProject, onVoiceResponse }: Options) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [listenTrigger, setListenTrigger] = useState(0); // increment to reliably start listening
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
@@ -271,17 +272,31 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         setTimeout(() => startListeningRef.current(false), 400);
       }
     };
-    rec.onerror = (e: { error: string }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (e: any) => {
+      const err: string = e.error ?? "";
       setListening(false);
-      if (e.error === "not-allowed") {
-        onVoiceResponse("Microphone blocked. Allow microphone access in your browser then refresh.");
+      if (err === "not-allowed" || err === "service-not-allowed") {
+        setPermissionDenied(true);
+        speak("Microphone access is blocked. Please allow microphone permission in your browser settings, then refresh the page.");
         return;
       }
+      if (err === "no-speech") {
+        // no user action needed — just restart if in conversation mode
+      } else if (err === "audio-capture") {
+        speak("No microphone detected. Please connect a microphone and try again.");
+        return;
+      } else if (err === "network") {
+        speak("Voice recognition requires an internet connection.");
+        return;
+      }
+      // aborted or no-speech — restart silently in conversation mode
       if (conversationModeRef.current && recognitionRef.current === rec) {
         setTimeout(() => startListeningRef.current(false), 600);
       }
     };
-    rec.onresult = (e: SpeechRecognitionEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
       if (window.speechSynthesis.speaking) return;
       const last = e.results[e.results.length - 1];
       if (last && last.isFinal) processCommandRef.current(last[0].transcript);
@@ -536,5 +551,5 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
   // Keep processCommandRef in sync so rec.onresult never goes stale
   processCommandRef.current = processCommand;
 
-  return { speak, greet, startListening, stopListening, toggleConversationMode, wakeAndListen, listening, speaking };
+  return { speak, greet, startListening, stopListening, toggleConversationMode, wakeAndListen, listening, speaking, permissionDenied };
 }

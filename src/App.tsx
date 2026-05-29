@@ -159,7 +159,6 @@ export default function App() {
   const [voiceText, setVoiceText] = useState("");
   const [voicePanelVisible, setVoicePanelVisible] = useState(false);
   const [wakeRipple, setWakeRipple] = useState(false);
-  const [micActive, setMicActive] = useState(false);
   const screensaverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expandedWindowsRef = useRef<Window[]>([]);
 
@@ -170,7 +169,7 @@ export default function App() {
     setTimeout(() => setVoicePanelVisible(false), hideAfter);
   }, []);
 
-  const { speak, greet, startListening, stopListening, toggleConversationMode, wakeAndListen, listening, speaking } =
+  const { speak, greet, startListening, stopListening, toggleConversationMode, wakeAndListen, listening, speaking, permissionDenied } =
     useVoiceAssistant({
       projects: projectsData,
       onHighlightProject: setHighlightedId,
@@ -190,7 +189,6 @@ export default function App() {
     if (sleeping) {
       setSleeping(false);
       setWakeRipple(true);
-      setMicActive(true);
       setTimeout(() => setWakeRipple(false), 1200);
       greet();
     } else if (!speakingRef.current) {
@@ -353,7 +351,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Status bar */}
-      <StatusBar micActive={micActive} listening={listening} sleeping={sleeping} />
+      <StatusBar micActive={!sleeping} listening={listening} sleeping={sleeping} micError={permissionDenied} />
 
       {/* Main content */}
       <main className="os-main">

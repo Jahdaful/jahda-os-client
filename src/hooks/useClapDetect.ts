@@ -25,6 +25,7 @@ export function useClapDetect({
   const ctxRef = useRef<AudioContext | null>(null);
   const frameRef = useRef<number>(0);
   const singleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoResumeCleanupRef = useRef<(() => void) | null>(null);
 
   // Refs so tick() always reads latest values without restarting the effect
   const interruptEnabledRef = useRef(interruptEnabled);
@@ -39,6 +40,8 @@ export function useClapDetect({
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (singleTimerRef.current) clearTimeout(singleTimerRef.current);
+    autoResumeCleanupRef.current?.();
+    autoResumeCleanupRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -56,6 +59,19 @@ export function useClapDetect({
         streamRef.current = stream;
         const ctx = new AudioContext();
         ctxRef.current = ctx;
+
+        // AudioContext starts suspended in Chrome/Safari until a user gesture.
+        // Any click or touch on the page will resume it — covers both click-to-wake and clap-to-wake.
+        const tryResume = () => {
+          if (ctx.state === "suspended") ctx.resume().catch(() => {});
+        };
+        document.addEventListener("click", tryResume, { once: true });
+        document.addEventListener("touchstart", tryResume, { once: true, passive: true } as AddEventListenerOptions);
+        autoResumeCleanupRef.current = () => {
+          document.removeEventListener("click", tryResume);
+          document.removeEventListener("touchstart", tryResume);
+        };
+
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
         ctx.createMediaStreamSource(stream).connect(analyser);
@@ -66,6 +82,7 @@ export function useClapDetect({
 
         function tick() {
           frameRef.current = requestAnimationFrame(tick);
+          if (ctx.state !== "running") return; // skip analysis while context suspended
           analyser.getFloatTimeDomainData(data);
           let peak = 0;
           for (let i = 0; i < data.length; i++) {

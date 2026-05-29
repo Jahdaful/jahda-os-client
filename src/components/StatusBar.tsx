@@ -5,9 +5,10 @@ interface Props {
   micActive: boolean;
   listening: boolean;
   sleeping: boolean;
+  micError?: boolean;
 }
 
-export default function StatusBar({ micActive, listening, sleeping }: Props) {
+export default function StatusBar({ micActive, listening, sleeping, micError }: Props) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -48,7 +49,9 @@ export default function StatusBar({ micActive, listening, sleeping }: Props) {
       <div className="status-bar__right">
         <div
           className={`status-mic ${
-            listening
+            micError
+              ? "status-mic--error"
+              : listening
               ? "status-mic--listening"
               : micActive
               ? "status-mic--active"
@@ -61,7 +64,7 @@ export default function StatusBar({ micActive, listening, sleeping }: Props) {
             transition={{ duration: 0.7, repeat: Infinity }}
           />
           <span className="status-label">
-            {listening ? "LISTENING" : micActive ? "MIC ON" : "STANDBY"}
+            {micError ? "MIC DENIED" : listening ? "LISTENING" : micActive ? "MIC ON" : "STANDBY"}
           </span>
         </div>
 

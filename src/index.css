@@ -208,8 +208,10 @@ body {
   color: var(--text-dim);
 }
 
-.status-mic--active .status-dot   { background: var(--success); }
+.status-mic--active .status-dot    { background: var(--success); }
 .status-mic--listening .status-dot { background: var(--accent); }
+.status-mic--error .status-dot     { background: var(--danger); }
+.status-mic--error .status-label   { color: var(--danger); }
 
 .status-dot {
   width: 7px;
