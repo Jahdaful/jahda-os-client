@@ -11,9 +11,9 @@ export default function VoicePanel({ text, visible }: Props) {
       {visible && (
         <motion.div
           className="voice-panel"
-          initial={{ y: 120, opacity: 0 }}
+          initial={{ y: -120, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 120, opacity: 0 }}
+          exit={{ y: -120, opacity: 0 }}
           transition={{ type: "spring", stiffness: 280, damping: 28 }}
         >
           <div className="voice-panel__indicator">

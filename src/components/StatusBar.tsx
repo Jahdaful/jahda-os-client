@@ -36,7 +36,7 @@ export default function StatusBar({ micActive, listening, sleeping }: Props) {
       transition={{ duration: 0.5, ease: "easeOut" }}
     >
       <div className="status-bar__left">
-        <span className="status-bar__brand">JAHDA OS</span>
+        <span className="status-bar__brand">THE PWAL OS</span>
         <span className="status-bar__sep">·</span>
         <span className="status-bar__date">{dateStr}</span>
       </div>

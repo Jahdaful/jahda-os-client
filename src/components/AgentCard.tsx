@@ -19,6 +19,7 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
 
     const delay = index * 120 + 400;
     const duration = 1400;
+    let rafId = 0;
 
     const timer = setTimeout(() => {
       const start = performance.now();
@@ -26,12 +27,15 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
         const t = Math.min((now - start) / duration, 1);
         const eased = 1 - Math.pow(1 - t, 3);
         setDisplayProgress(Math.round(eased * project.progress));
-        if (t < 1) requestAnimationFrame(step);
+        if (t < 1) rafId = requestAnimationFrame(step);
       }
-      requestAnimationFrame(step);
+      rafId = requestAnimationFrame(step);
     }, delay);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(rafId);
+    };
   }, [project.progress, index]);
 
   return (
@@ -67,6 +71,7 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
         </span>
         <div className="agent-card__title-group">
           <h2 className="agent-card__name">{project.name}</h2>
+          <span className="agent-card__agent-title" style={{ color: project.color }}>{project.title}</span>
           <span className="agent-card__tech">{project.techTag}</span>
         </div>
       </div>
@@ -89,31 +94,6 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
         />
       </div>
 
-      {/* Repo + Branch metadata (restored from original) */}
-      <div className="agent-card__data-rows">
-        <div className="agent-card__data-row">
-          <span className="agent-card__data-label">REPO</span>
-          <a
-            href={`https://${project.repo}`}
-            target="_blank"
-            rel="noreferrer"
-            className="agent-card__data-link"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {project.repo}
-          </a>
-        </div>
-        <div className="agent-card__data-row">
-          <span className="agent-card__data-label">BRANCH</span>
-          <code className="agent-card__data-code">{project.branch}</code>
-        </div>
-        <div className="agent-card__data-row">
-          <span className="agent-card__data-label">BUGS</span>
-          <span className={project.bugs === 0 ? "bugs-clear" : "bugs-open"}>
-            {project.bugs === 0 ? "✓ Clear" : `${project.bugs} open`}
-          </span>
-        </div>
-      </div>
 
       {/* Footer: last activity + actions */}
       <div className="agent-card__footer">

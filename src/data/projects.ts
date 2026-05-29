@@ -1,6 +1,7 @@
 export interface Project {
   id: string;
   name: string;
+  title: string;
   language: string;
   status: "Active" | "Inactive" | "Archived" | "Planned";
   description: string;
@@ -18,78 +19,96 @@ export interface Project {
 
 export const projectsData: Project[] = [
   {
-    id: "balogun",
-    name: "BALOGUN",
+    id: "ministry-hub",
+    name: "MINISTRY HUB",
+    title: "CPO · Chief Pastoral Officer",
     language: "TypeScript",
     status: "Active",
     description:
-      "Real-time threat detection & security suite across Mac, Windows, iOS, and Android.",
-    url: "https://balogun-web.vercel.app",
-    repo: "github.com/Jahdaful/balogun",
+      "Pastoral command center — sermons, congregation management, events and outreach coordination.",
+    url: "https://ministry-hub.vercel.app",
+    repo: "github.com/Pwal/ministry-hub",
     branch: "main",
     bugs: 0,
     progress: 85,
-    icon: "🛡️",
+    icon: "✝️",
     color: "#ff3333",
     techTag: "TypeScript · Node.js",
     lastActivity: "2 hours ago",
     voiceIntro:
-      "Balogun is your security commander. Real-time threat detection across Mac, Windows, iOS, and Android. Currently monitoring all systems. Status: active.",
+      "Ministry Hub is your pastoral command center. Sermons, congregation management, events and outreach. All systems active.",
   },
   {
-    id: "veridex",
-    name: "VERIDEX",
+    id: "chef-studio",
+    name: "CHEF STUDIO",
+    title: "CCO · Chief Culinary Officer",
     language: "JavaScript",
     status: "Active",
     description:
-      "Forensic AI media authenticity detection suite for deepfakes and voice clones.",
-    url: "https://veridex-two.vercel.app",
-    repo: "github.com/Jahdaful/veridex",
+      "Culinary brand platform — recipes, menu engineering, food business management and client bookings.",
+    url: "https://chef-studio.vercel.app",
+    repo: "github.com/Pwal/chef-studio",
     branch: "main",
     bugs: 0,
     progress: 90,
-    icon: "🔬",
+    icon: "👨‍🍳",
     color: "#00d4ff",
     techTag: "React · Claude AI",
     lastActivity: "1 hour ago",
     voiceIntro:
-      "Veridex is your forensic intelligence suite. AI-powered deepfake detection, voice clone analysis, and identity modification screening. Status: active.",
+      "Chef Studio is your culinary command center. Recipe management, menu engineering, and client bookings. Status: active.",
   },
   {
-    id: "couture-crm",
-    name: "COUTURE CRM",
+    id: "design-atelier",
+    name: "DESIGN ATELIER",
+    title: "CDO · Chief Design Officer",
     language: "TypeScript",
     status: "Active",
     description:
-      "Fashion studio operations — clients, orders, invoices, and contracts management.",
-    url: "https://couture-crm.vercel.app",
-    repo: "github.com/Jahdaful/couture-crm",
+      "Luxury menswear atelier — bespoke suits, agbada, kaftan and senator native wear. Tailored for kings, executives and men of distinction.",
+    url: "https://pwal-os.vercel.app?design",
+    repo: "github.com/Pwal/design-atelier",
     branch: "main",
     bugs: 0,
     progress: 72,
-    icon: "👗",
+    icon: "🤵",
     color: "#a855f7",
     techTag: "React · TypeScript",
     lastActivity: "3 hours ago",
     voiceIntro:
-      "Couture CRM manages your fashion studio operations — clients, orders, invoices, and contracts. Status: active.",
+      "Design Atelier is your luxury menswear house. Bespoke suits, agbada, kaftan, and senator native wear — crafted for kings and executives. Status: active.",
   },
   {
-    id: "jahda-the-helper",
-    name: "JAHDA THE HELPER",
+    id: "pwal-planner",
+    name: "PWAL PLANNER",
+    title: "COS · Chief of Staff",
     language: "TypeScript",
     status: "Active",
-    description: "Personal AI command center — always available, always learning.",
-    url: "https://jahda-helper.vercel.app",
-    repo: "github.com/Jahdaful/jahda-the-helper",
+    description:
+      "Smart life scheduler — balances 9-to-5 employment with ministry, culinary, design, and family commitments.",
+    url: "https://pwal-os.vercel.app?planner",
+    repo: "github.com/Pwal/pwal-planner",
     branch: "main",
     bugs: 0,
-    progress: 68,
-    icon: "🤖",
+    progress: 60,
+    icon: "📅",
     color: "#22c55e",
     techTag: "AI · TypeScript",
     lastActivity: "30 minutes ago",
     voiceIntro:
-      "Jahda the Helper is your personal AI command center. Always available, always learning. Status: active.",
+      "Pwal Planner is your life scheduler. It balances your 9-to-5 job with your ministry duties, culinary work, design projects, and family time — all in one intelligent calendar. Status: active.",
   },
 ];
+
+// Work schedule constants — used by the planner
+export const WORK_SCHEDULE = {
+  workStart: 9,   // 9 AM
+  workEnd: 17,    // 5 PM
+  workDays: [1, 2, 3, 4, 5], // Mon–Fri
+  zones: [
+    { label: "Ministry", color: "#ff3333", icon: "✝️", hours: "Evenings & Weekends" },
+    { label: "Chef", color: "#00d4ff", icon: "👨‍🍳", hours: "Weekends & After 6PM" },
+    { label: "Design Atelier", color: "#a855f7", icon: "🤵", hours: "Evenings & Weekends" },
+    { label: "Family", color: "#f59e0b", icon: "🏡", hours: "Evenings & Weekends" },
+  ],
+};
