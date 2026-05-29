@@ -255,7 +255,8 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
       }
     };
     rec.onresult = (e: SpeechRecognitionEvent) => {
-      // Always take the most recent final result
+      // Never process recognition results while the agent is speaking — avoids acoustic feedback loop
+      if (window.speechSynthesis.speaking) return;
       const last = e.results[e.results.length - 1];
       if (last && last.isFinal) {
         processCommandRef.current(last[0].transcript);
