@@ -103,6 +103,7 @@ function pingTTS(synth: SpeechSynthesis) {
 export function useVoiceAssistant({ projects, onHighlightProject, onVoiceResponse }: Options) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [listenTrigger, setListenTrigger] = useState(0); // increment to reliably start listening
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const synth = window.speechSynthesis;
@@ -240,65 +241,60 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         `What are we doing today?`,
       ]),
     ]);
-    // greeting no longer needs to call startListening — recognition is always-on
+    // Trigger listening after greeting via state — guarantees fresh closure
+    setListenTrigger(v => v + 1);
   }, [speakQueue, projects]);
 
-  // Always-on recognition — starts on mount, restarts itself forever
-  // Commands are only processed when conversationModeRef.current === true
-  useEffect(() => {
+  const startListening = useCallback((override = false) => {
+    if (speaking && !override) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR: SpeechRecognitionCtor | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!SR) return;
-
-    let cancelled = false;
-    const SRClass = SR; // narrow type for use inside startRec
-
-    function startRec() {
-      if (cancelled) return;
-
-      const rec = new SRClass();
-      rec.continuous = true;
-      rec.interimResults = false;
-      rec.lang = "en-US";
-      recognitionRef.current = rec;
-
-      rec.onstart = () => setListening(true);
-      rec.onend = () => {
-        setListening(false);
-        if (!cancelled) setTimeout(startRec, 300); // always restart
-      };
-      rec.onerror = (e: { error: string }) => {
-        setListening(false);
-        if (e.error === "not-allowed") {
-          onVoiceResponse("Microphone blocked. Allow microphone access in your browser then refresh.");
-          return;
-        }
-        if (!cancelled) setTimeout(startRec, 600);
-      };
-      rec.onresult = (e: SpeechRecognitionEvent) => {
-        if (window.speechSynthesis.speaking) return; // no feedback loop
-        if (!conversationModeRef.current) return;   // only process after wake/greeting
-        const last = e.results[e.results.length - 1];
-        if (last && last.isFinal) {
-          processCommandRef.current(last[0].transcript);
-        }
-      };
-
-      try { rec.start() } catch { if (!cancelled) setTimeout(startRec, 1000) }
+    if (!SR) {
+      onVoiceResponse("Voice recognition not available in this browser.");
+      return;
     }
 
-    startRec();
-    return () => {
-      cancelled = true;
-      try { recognitionRef.current?.stop() } catch { /* ok */ }
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    recognitionRef.current?.stop();
 
-  const startListening = useCallback((override = false) => {
-    // Kept for wakeAndListen compatibility — recognition is already running
-    if (speaking && !override) return;
-  }, [speaking]);
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+
+    rec.onstart = () => setListening(true);
+    rec.onend = () => {
+      setListening(false);
+      // Only restart if THIS instance is still the active one — prevents old instances
+      // from triggering restarts after being replaced by startListening
+      if (conversationModeRef.current && recognitionRef.current === rec) {
+        setTimeout(() => startListeningRef.current(false), 400);
+      }
+    };
+    rec.onerror = (e: { error: string }) => {
+      setListening(false);
+      if (e.error === "not-allowed") {
+        onVoiceResponse("Microphone blocked. Allow microphone access in your browser then refresh.");
+        return;
+      }
+      if (conversationModeRef.current && recognitionRef.current === rec) {
+        setTimeout(() => startListeningRef.current(false), 600);
+      }
+    };
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      if (window.speechSynthesis.speaking) return;
+      const last = e.results[e.results.length - 1];
+      if (last && last.isFinal) processCommandRef.current(last[0].transcript);
+    };
+
+    recognitionRef.current = rec;
+    try { rec.start() } catch { /* already starting */ }
+  }, [speaking, onVoiceResponse]);
+
+  // Start listening when greeting finishes — state trigger guarantees fresh closure
+  useEffect(() => {
+    if (listenTrigger > 0) startListening(true);
+  }, [listenTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep a stable ref so speakQueue closure and onerror can call startListening
   startListeningRef.current = startListening;

@@ -177,6 +177,10 @@ export default function App() {
       onVoiceResponse: handleVoiceResponse,
     });
 
+  // Ref so wake() always reads latest speaking value — avoids stale closure bug
+  const speakingRef = useRef(false);
+  useEffect(() => { speakingRef.current = speaking; }, [speaking]);
+
   const dismissScreensaver = useCallback(() => {
     setScreensaver(false);
   }, []);
@@ -189,16 +193,15 @@ export default function App() {
       setMicActive(true);
       setTimeout(() => setWakeRipple(false), 1200);
       greet();
-    } else if (!speaking) {
-      // Only interrupt when COS isn't speaking — prevents clap detection triggering on TTS audio
+    } else if (!speakingRef.current) {
       wakeAndListen();
     }
-  }, [sleeping, speaking, greet, wakeAndListen]);
+  }, [sleeping, greet, wakeAndListen]);
 
-  // Double clap → wake / interrupt
+  // Clap detection ONLY active while sleeping — prevents acoustic feedback when COS is awake and speaking
   useClapDetect({
     onDoubleclap: wake,
-    enabled: true,
+    enabled: sleeping,
   });
 
   // Screensaver after 5 min of no mouse movement (only when awake)
