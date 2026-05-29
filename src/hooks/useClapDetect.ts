@@ -107,14 +107,18 @@ export function useClapDetect({
           // ── Voice interrupt — sustained speech while agent is talking ─────
           if (interruptEnabledRef.current && onVoiceInterruptRef.current) {
             const now = Date.now();
-            if (peak > 0.08 && now > interruptCooldown) {
+            if (now <= interruptCooldown) {
+              // Within cooldown — always reset so it starts fresh when cooldown expires
+              sustainStart = null;
+            } else if (peak > 0.16) {
+              // High threshold so speaker bleed doesn't trigger (direct speech only)
               if (sustainStart === null) sustainStart = now;
-              else if (now - sustainStart > 250) {
+              else if (now - sustainStart > 500) {
                 onVoiceInterruptRef.current();
                 sustainStart = null;
-                interruptCooldown = now + 2000;
+                interruptCooldown = now + 5000; // 5s cooldown
               }
-            } else if (peak < 0.05) {
+            } else if (peak < 0.08) {
               sustainStart = null;
             }
           }
