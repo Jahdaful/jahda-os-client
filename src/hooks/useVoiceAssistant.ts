@@ -100,10 +100,11 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const synth = window.speechSynthesis;
-  // When true, mic reopens automatically after agent finishes speaking
   const conversationModeRef = useRef(false);
   const startListeningRef = useRef<(override?: boolean) => void>(() => {});
   const wakeAndListenRef = useRef<() => void>(() => {});
+  // Conversation history for Claude context (last 6 exchanges)
+  const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
 
   const getVoiceRef = useRef(() => {
     const voices = synth.getVoices();
@@ -274,6 +275,35 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
     }
   }, [speak, synth]);
 
+  // Call Claude for anything that isn't a fast local command
+  const askClaude = useCallback(async (transcript: string) => {
+    try {
+      const context = {
+        projects: projects.map(p => ({
+          name: p.name, title: p.title, description: p.description,
+          progress: p.progress, status: p.status,
+        })),
+      };
+      const res = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: transcript, history: historyRef.current.slice(-6), context }),
+      });
+      if (!res.ok) throw new Error('API error');
+      const { response } = await res.json();
+      if (!response) throw new Error('Empty response');
+      // Track conversation history
+      historyRef.current = [
+        ...historyRef.current,
+        { role: 'user' as const, content: transcript },
+        { role: 'assistant' as const, content: response },
+      ].slice(-12);
+      speak(response);
+    } catch {
+      speak("I'm having trouble reaching my thinking engine right now. Try again in a moment, P Wal.");
+    }
+  }, [projects, speak]);
+
   // Stable ref for processCommand (avoids stale closure in rec.onresult)
   const processCommandRef = useRef((_transcript: string) => {});
 
@@ -295,107 +325,7 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         return;
       }
 
-      // ── Greeting ────────────────────────────────────────────────────────
-      if (has(t, "hello", "hi there", "good morning", "good afternoon", "good evening", "what's up", "whats up", "sup")) {
-        speak(pick([
-          `${getTimeOfDay().charAt(0).toUpperCase() + getTimeOfDay().slice(1)}, P Wal. We're live — what are we working on?`,
-          `Hey. Everything's moving. Talk to me.`,
-          `P Wal. Good to hear from you. What do you need?`,
-        ]));
-        return;
-      }
-
-      // ── How are you ─────────────────────────────────────────────────────
-      if (has(t, "how are you", "how you doing", "you good", "you okay", "you alright")) {
-        speak(pick([
-          "Dialed in and ready. Honestly, I'm only as good as the work we're putting in — so let's make it count. What's on your mind?",
-          "I'm locked. Everything in here is running clean. More importantly — how are you doing?",
-          "Good. Real good. I've been watching the mission — things are moving. What do you need from me?",
-        ]));
-        return;
-      }
-
-      // ── Affirmations / acknowledgements ──────────────────────────────────
-      if (has(t, "thank you", "thanks", "appreciate", "thank you so much", "much appreciated")) {
-        speak(pick([
-          "Always. You don't have to thank me — this is what I'm built for.",
-          "That's what I'm here for. What's next?",
-          "Don't mention it. What else you got for me?",
-        ]));
-        return;
-      }
-      if (has(t, "good job", "well done", "nice work", "great job", "you did great", "love that", "love it", "perfect", "exactly")) {
-        speak(pick([
-          "I appreciate that. Now let's not stop there — what are we hitting next?",
-          "That means something, P Wal. Thank you. What's the next move?",
-          "We're in sync. That's when it's fun. What do you need?",
-        ]));
-        return;
-      }
-      if (has(t, "yes", "yeah", "yep", "correct", "right", "sure", "okay okay", "ok ok", "got it", "copy")) {
-        speak(pick([
-          "Good. I'm right here.",
-          "Understood. What's next?",
-          "Copy. Talk to me.",
-        ]));
-        return;
-      }
-      if (has(t, "never mind", "forget it", "cancel", "stop that", "not now")) {
-        speak(pick([
-          "No worries. I'm here when you need me.",
-          "All good. Just say the word.",
-          "Got it — standing by.",
-        ]));
-        return;
-      }
-
-      // ── Encouragement / emotional support ────────────────────────────────
-      if (has(t, "i'm tired", "im tired", "exhausted", "burned out", "i'm stressed", "im stressed", "overwhelmed", "struggling")) {
-        speak(pick([
-          `P Wal — I hear you. You're carrying a lot right now, and that's real. But hear this: ${getDailyVerse()} Rest isn't quitting. It's strategy.`,
-          "Listen — you don't have to hold everything at once. Your agents are doing their part. You built this so it could run without you grinding yourself down. Take a breath. What do you actually need right now?",
-          `Take a moment. ${getDailyVerse()} You're further along than you think. The mission is still moving.`,
-        ]));
-        return;
-      }
-      if (has(t, "motivate me", "inspire me", "push me", "encourage me", "i need motivation", "pump me up")) {
-        speak(pick([
-          `Alright — listen up. ${getDailyVerse()} That's not just a verse. That's a mandate. You are a pastor, a chef, a designer, and a builder. That combination doesn't exist anywhere else. Now move.`,
-          `P Wal, most people pick one thing and struggle with it. You're running four and building your own infrastructure while you do it. That's not normal — that's exceptional. Don't forget what you're actually doing here.`,
-          `You started. That's the hardest part and it's already done. The mission is clear, your agents are ready, and the Lord's got the rest. What are we executing on right now?`,
-        ]));
-        return;
-      }
-      if (has(t, "i'm good", "im good", "doing well", "feeling good", "i'm great", "im great", "blessed")) {
-        speak(pick([
-          "That's what I want to hear. Blessed and building — nothing better than that. What are we working on?",
-          "Good. That energy is everything. Let's use it. What's the move?",
-          "I love to hear that. God is good. Let's keep the momentum — what's next?",
-        ]));
-        return;
-      }
-
-      // ── Prayer / faith ───────────────────────────────────────────────────
-      if (has(t, "pray for me", "say a prayer", "need prayer", "bless me", "word of prayer")) {
-        speak(`P Wal, I speak this over you right now. ${getDailyVerse()} May every step you take today be ordered. May the work of your hands be blessed. Go in peace, and go with power. Amen.`);
-        return;
-      }
-
-      // ── Help ────────────────────────────────────────────────────────────
-      if (has(t, "help", "what can you do", "commands", "what do you know", "capabilities", "what are you")) {
-        speak(
-          "I'm your Chief of Staff. Talk to me like a person — ask for a status report, have me walk you through your agents, check the weather, pull up a project, read you scripture, or just have a conversation. I don't need specific commands. Just say what you need."
-        );
-        return;
-      }
-
-      // ── Who am I / identity ──────────────────────────────────────────────
-      if (has(t, "who am i", "remind me", "what am i building", "what is this")) {
-        speak("You're P Wal — pastor, chef, designer, builder. This is your command center: four active agents, all running their missions. You built this from scratch. Don't ever lose sight of what that means.");
-        return;
-      }
-
-      // ── Conversation mode ────────────────────────────────────────────────
+      // ── Conversation mode (local — no round-trip needed) ─────────────────
       if (has(t, "conversation mode", "keep listening", "stay on", "hands free", "keep talking")) {
         conversationModeRef.current = true;
         speak("I'm with you. Keep talking — I'll stay right here.");
@@ -550,29 +480,10 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         return;
       }
 
-      // ── Smart fallback ────────────────────────────────────────────────────
-      const active = projects.filter((p) => p.status === "Active");
-      const avg = Math.round(active.reduce((s, p) => s + p.progress, 0) / active.length);
-      if (has(t, "how", "what", "where", "when", "tell", "show", "give")) {
-        speak(pick([
-          `I want to help — can you be a bit more specific? We've got ${active.length} agents at ${avg} percent. Tell me what exactly you need.`,
-          "Say it again — I want to make sure I actually answer your question, not just give you something generic.",
-          `Give me a little more to work with and I'll get you exactly what you need.`,
-        ]));
-      } else if (t.length < 8) {
-        speak(pick([
-          "I heard something but I'm not sure what you need. Say a bit more.",
-          "I'm with you — what are you asking?",
-        ]));
-      } else {
-        speak(pick([
-          `I'm not sure I caught that clearly. You can ask about any of your agents, the schedule, the weather — or just have a conversation. Talk to me naturally.`,
-          `Didn't quite catch that. Try asking about your status, your agents, or just say what's on your mind.`,
-          `Say that again — I want to get it right. Or ask me anything — I'm here.`,
-        ]));
-      }
+      // ── Claude fallback — anything not handled locally ────────────────────
+      askClaude(transcript);
     },
-    [projects, onHighlightProject, speak]
+    [projects, onHighlightProject, speak, askClaude]
   );
 
   // Keep processCommandRef in sync so rec.onresult never goes stale
