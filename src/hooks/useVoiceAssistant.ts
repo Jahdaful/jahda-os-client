@@ -239,61 +239,66 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         `I'm right here — what do you need?`,
         `What are we doing today?`,
       ]),
-    ], () => {
-      setTimeout(() => startListeningRef.current(true), 300);
-    });
+    ]);
+    // greeting no longer needs to call startListening — recognition is always-on
   }, [speakQueue, projects]);
 
-  const startListening = useCallback((override = false) => {
-    if (speaking && !override) return; // block mic while talking unless wake override
+  // Always-on recognition — starts on mount, restarts itself forever
+  // Commands are only processed when conversationModeRef.current === true
+  useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR: SpeechRecognitionCtor | undefined = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!SR) {
-      speak("Voice recognition isn't available in this browser.");
-      return;
+    if (!SR) return;
+
+    let cancelled = false;
+    const SRClass = SR; // narrow type for use inside startRec
+
+    function startRec() {
+      if (cancelled) return;
+
+      const rec = new SRClass();
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = "en-US";
+      recognitionRef.current = rec;
+
+      rec.onstart = () => setListening(true);
+      rec.onend = () => {
+        setListening(false);
+        if (!cancelled) setTimeout(startRec, 300); // always restart
+      };
+      rec.onerror = (e: { error: string }) => {
+        setListening(false);
+        if (e.error === "not-allowed") {
+          onVoiceResponse("Microphone blocked. Allow microphone access in your browser then refresh.");
+          return;
+        }
+        if (!cancelled) setTimeout(startRec, 600);
+      };
+      rec.onresult = (e: SpeechRecognitionEvent) => {
+        if (window.speechSynthesis.speaking) return; // no feedback loop
+        if (!conversationModeRef.current) return;   // only process after wake/greeting
+        const last = e.results[e.results.length - 1];
+        if (last && last.isFinal) {
+          processCommandRef.current(last[0].transcript);
+        }
+      };
+
+      try { rec.start() } catch { if (!cancelled) setTimeout(startRec, 1000) }
     }
 
-    // Stop any previous session cleanly
-    recognitionRef.current?.stop();
-
-    const rec = new SR();
-    rec.continuous = true;       // never stops — no restart loop needed
-    rec.interimResults = false;
-    rec.lang = "en-US";
-
-    rec.onstart = () => setListening(true);
-    rec.onend = () => {
-      setListening(false);
-      // Continuous mode rarely fires onend — restart when it does
-      if (conversationModeRef.current) {
-        setTimeout(() => startListeningRef.current(false), 300);
-      }
+    startRec();
+    return () => {
+      cancelled = true;
+      try { recognitionRef.current?.stop() } catch { /* ok */ }
     };
-    rec.onerror = (e: { error: string }) => {
-      setListening(false);
-      if (e.error === "not-allowed") {
-        onVoiceResponse("Microphone access is blocked. Please click the lock icon in your browser address bar, allow the microphone, then refresh.");
-        speak("Microphone access is blocked. Please allow microphone access in your browser settings and refresh the page.");
-        return;
-      }
-      // Restart fresh on any other error
-      if (conversationModeRef.current) {
-        setTimeout(() => startListeningRef.current(false), 500);
-      }
-    };
-    rec.onresult = (e: SpeechRecognitionEvent) => {
-      // Never process recognition results while the agent is speaking — avoids acoustic feedback loop
-      if (window.speechSynthesis.speaking) return;
-      const last = e.results[e.results.length - 1];
-      if (last && last.isFinal) {
-        processCommandRef.current(last[0].transcript);
-      }
-    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    recognitionRef.current = rec;
-    try { rec.start() } catch { /* already starting */ }
-  }, [speaking, speak]);
+  const startListening = useCallback((override = false) => {
+    // Kept for wakeAndListen compatibility — recognition is already running
+    if (speaking && !override) return;
+  }, [speaking]);
 
   // Keep a stable ref so speakQueue closure and onerror can call startListening
   startListeningRef.current = startListening;
