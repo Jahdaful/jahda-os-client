@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { Project } from "../data/projects";
 
@@ -9,21 +9,25 @@ interface Props {
   onVoiceIntro: (project: Project) => void;
 }
 
-export default function AgentCard({ project, index, highlighted, onVoiceIntro }: Props) {
+function AgentCard({ project, index, highlighted, onVoiceIntro }: Props) {
   const [displayProgress, setDisplayProgress] = useState(0);
   const animatedRef = useRef(false);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (animatedRef.current) return;
     animatedRef.current = true;
+    cancelledRef.current = false;
 
     const delay = index * 120 + 400;
     const duration = 1400;
     let rafId = 0;
 
     const timer = setTimeout(() => {
+      if (cancelledRef.current) return;
       const start = performance.now();
       function step(now: number) {
+        if (cancelledRef.current) return;
         const t = Math.min((now - start) / duration, 1);
         const eased = 1 - Math.pow(1 - t, 3);
         setDisplayProgress(Math.round(eased * project.progress));
@@ -33,6 +37,7 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
     }, delay);
 
     return () => {
+      cancelledRef.current = true;
       clearTimeout(timer);
       cancelAnimationFrame(rafId);
     };
@@ -51,24 +56,17 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
       <div className="agent-card__stripe" />
       <div className="agent-card__glow" />
 
-      {/* Header */}
       <div className="agent-card__header">
         <motion.span
           className="agent-card__status-dot"
           animate={{
             opacity: [1, 0.4, 1],
-            boxShadow: [
-              `0 0 6px ${project.color}`,
-              `0 0 2px ${project.color}`,
-              `0 0 6px ${project.color}`,
-            ],
+            boxShadow: [`0 0 6px ${project.color}`, `0 0 2px ${project.color}`, `0 0 6px ${project.color}`],
           }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
           style={{ background: project.color }}
         />
-        <span className="agent-card__icon" aria-hidden="true">
-          {project.icon}
-        </span>
+        <span className="agent-card__icon" aria-hidden="true">{project.icon}</span>
         <div className="agent-card__title-group">
           <h2 className="agent-card__name">{project.name}</h2>
           <span className="agent-card__agent-title" style={{ color: project.color }}>{project.title}</span>
@@ -76,10 +74,8 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
         </div>
       </div>
 
-      {/* Description */}
       <p className="agent-card__desc">{project.description}</p>
 
-      {/* Progress */}
       <div className="agent-card__progress-row">
         <span className="agent-card__progress-label">PROGRESS</span>
         <span className="agent-card__progress-pct">{displayProgress}%</span>
@@ -94,8 +90,6 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
         />
       </div>
 
-
-      {/* Footer: last activity + actions */}
       <div className="agent-card__footer">
         <span className="agent-card__activity">⏱ {project.lastActivity}</span>
         <div className="agent-card__actions">
@@ -123,3 +117,11 @@ export default function AgentCard({ project, index, highlighted, onVoiceIntro }:
     </motion.article>
   );
 }
+
+// Prevent re-render unless project data, highlight, or index actually changes
+export default memo(AgentCard, (prev, next) =>
+  prev.highlighted === next.highlighted &&
+  prev.index === next.index &&
+  prev.project.id === next.project.id &&
+  prev.project.progress === next.project.progress
+);
