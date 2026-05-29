@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Project } from "../data/projects";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +94,12 @@ function has(t: string, ...words: string[]) {
   return words.some((w) => t.includes(w));
 }
 
+function pingTTS(synth: SpeechSynthesis) {
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0; u.rate = 10;
+  synth.speak(u);
+}
+
 export function useVoiceAssistant({ projects, onHighlightProject, onVoiceResponse }: Options) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -103,8 +109,27 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
   const conversationModeRef = useRef(false);
   const startListeningRef = useRef<(override?: boolean) => void>(() => {});
   const wakeAndListenRef = useRef<() => void>(() => {});
-  // Conversation history for Claude context (last 6 exchanges)
   const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+
+  // Keep TTS engine alive — Chrome freezes synthesis after ~15 min idle or in background
+  useEffect(() => {
+    const heartbeat = setInterval(() => {
+      if (!synth.speaking) pingTTS(synth);
+    }, 5 * 60 * 1000);
+
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        synth.cancel();
+        setTimeout(() => pingTTS(synth), 300);
+      }
+    }
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [synth]);
 
   const getVoiceRef = useRef(() => {
     const voices = synth.getVoices();
