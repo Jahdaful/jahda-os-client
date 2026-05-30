@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Project } from "../data/projects";
+import {
+  processInput,
+  getDailyVerse,
+  getTimeString,
+  type ConversationTurn,
+} from "../conversationEngine";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SpeechRecognitionCtor = new () => any;
@@ -10,39 +16,11 @@ interface Options {
   onVoiceResponse: (text: string) => void;
 }
 
-const GREETING_VERSES = [
-  "Psalm 118 verse 24 — This is the day the Lord has made; let us rejoice and be glad in it.",
-  "Proverbs 3 verse 5 — Trust in the Lord with all your heart and lean not on your own understanding.",
-  "Philippians 4 verse 13 — I can do all things through Christ who strengthens me.",
-  "Joshua 1 verse 9 — Be strong and courageous. The Lord your God is with you wherever you go.",
-  "Jeremiah 29 verse 11 — For I know the plans I have for you, plans to prosper you.",
-  "Isaiah 41 verse 10 — Do not fear, for I am with you. Be not dismayed, for I am your God.",
-  "Romans 8 verse 28 — All things work together for good to those who love God.",
-  "Matthew 6 verse 33 — Seek first the kingdom of God, and all these things will be added to you.",
-  "Proverbs 16 verse 3 — Commit your works to the Lord and your plans will succeed.",
-  "Psalm 23 verse 1 — The Lord is my shepherd; I shall not want.",
-];
-
-function getDailyVerse() {
-  const dayOfYear = Math.floor(
-    (Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000
-  );
-  return GREETING_VERSES[dayOfYear % GREETING_VERSES.length];
-}
-
 function getTimeOfDay() {
   const h = new Date().getHours();
   if (h < 12) return "morning";
   if (h < 17) return "afternoon";
   return "evening";
-}
-
-function getTimeString() {
-  return new Date().toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
 }
 
 const WMO_DESCRIPTIONS: Record<number, string> = {
@@ -100,19 +78,29 @@ function pingTTS(synth: SpeechSynthesis) {
   synth.speak(u);
 }
 
+const SILENCE_PROMPTS = ["I'm listening.", "Go ahead.", "Take your time."];
+
 export function useVoiceAssistant({ projects, onHighlightProject, onVoiceResponse }: Options) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [permissionDenied, setPermissionDenied] = useState(false);
-  const [listenTrigger, setListenTrigger] = useState(0); // increment to reliably start listening
+  const [listenTrigger, setListenTrigger] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const synth = window.speechSynthesis;
   const conversationModeRef = useRef(false);
   const startListeningRef = useRef<(override?: boolean) => void>(() => {});
   const wakeAndListenRef = useRef<() => void>(() => {});
-  const historyRef = useRef<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  const historyRef = useRef<ConversationTurn[]>([]);
   const speakingRef = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }, []);
 
   // Keep TTS engine alive — Chrome freezes synthesis after ~15 min idle or in background
   useEffect(() => {
@@ -148,8 +136,8 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
 
   const makeUtt = useCallback((text: string) => {
     const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 1.05;   // sharp, confident delivery
-    utt.pitch = 0.88;  // warm male tone
+    utt.rate = 1.05;
+    utt.pitch = 0.88;
     utt.volume = 1;
     const v = getVoiceRef.current();
     if (v) utt.voice = v;
@@ -168,7 +156,6 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
           setSpeaking(false);
           speakingRef.current = false;
           onDone?.();
-          // Re-open mic quickly after responding in conversation mode
           if (conversationModeRef.current) {
             setTimeout(() => startListeningRef.current(), 250);
           }
@@ -194,7 +181,6 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
     [speakQueue]
   );
 
-  // Instantly interrupt any speech and snap into listen mode
   const wakeAndListen = useCallback(() => {
     synth.cancel();
     setSpeaking(false);
@@ -212,7 +198,7 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
   wakeAndListenRef.current = wakeAndListen;
 
   const greet = useCallback(async () => {
-    conversationModeRef.current = true; // stay in conversation after each response
+    conversationModeRef.current = true;
     const timeOfDay = getTimeOfDay();
     const timeStr = getTimeString();
     const verse = getDailyVerse();
@@ -242,7 +228,6 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         `What are we doing today?`,
       ]),
     ]);
-    // Trigger listening after greeting via state — guarantees fresh closure
     setListenTrigger(v => v + 1);
   }, [speakQueue, projects]);
 
@@ -263,17 +248,28 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
     rec.interimResults = false;
     rec.lang = "en-US";
 
-    rec.onstart = () => setListening(true);
+    rec.onstart = () => {
+      setListening(true);
+      if (conversationModeRef.current) {
+        silenceTimerRef.current = setTimeout(() => {
+          if (!speakingRef.current && conversationModeRef.current) {
+            speak(SILENCE_PROMPTS[Math.floor(Math.random() * SILENCE_PROMPTS.length)]);
+          }
+        }, 3000);
+      }
+    };
+
     rec.onend = () => {
+      clearSilenceTimer();
       setListening(false);
-      // Only restart if THIS instance is still the active one — prevents old instances
-      // from triggering restarts after being replaced by startListening
       if (conversationModeRef.current && recognitionRef.current === rec) {
         setTimeout(() => startListeningRef.current(false), 400);
       }
     };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onerror = (e: any) => {
+      clearSilenceTimer();
       const err: string = e.error ?? "";
       setListening(false);
       if (err === "not-allowed" || err === "service-not-allowed") {
@@ -281,44 +277,45 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         speak("Microphone access is blocked. Please allow microphone permission in your browser settings, then refresh the page.");
         return;
       }
-      if (err === "no-speech") {
-        // no user action needed — just restart if in conversation mode
-      } else if (err === "audio-capture") {
+      if (err === "audio-capture") {
         speak("No microphone detected. Please connect a microphone and try again.");
         return;
-      } else if (err === "network") {
+      }
+      if (err === "network") {
         speak("Voice recognition requires an internet connection.");
         return;
       }
-      // aborted or no-speech — restart silently in conversation mode
+      // no-speech or aborted — restart silently in conversation mode
       if (conversationModeRef.current && recognitionRef.current === rec) {
         setTimeout(() => startListeningRef.current(false), 600);
       }
     };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
+      clearSilenceTimer();
       if (window.speechSynthesis.speaking) return;
       const last = e.results[e.results.length - 1];
       if (last && last.isFinal) processCommandRef.current(last[0].transcript);
     };
 
     recognitionRef.current = rec;
-    try { rec.start() } catch { /* already starting */ }
-  }, [speaking, onVoiceResponse]);
+    try { rec.start(); } catch { /* already starting */ }
+  }, [speaking, onVoiceResponse, speak, clearSilenceTimer]);
 
   // Start listening when greeting finishes — state trigger guarantees fresh closure
   useEffect(() => {
     if (listenTrigger > 0) startListening(true);
   }, [listenTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep a stable ref so speakQueue closure and onerror can call startListening
   startListeningRef.current = startListening;
 
   const stopListening = useCallback(() => {
     conversationModeRef.current = false;
+    clearSilenceTimer();
     recognitionRef.current?.stop();
     setListening(false);
-  }, []);
+  }, [clearSilenceTimer]);
 
   const toggleConversationMode = useCallback(() => {
     const next = !conversationModeRef.current;
@@ -329,13 +326,13 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
       });
     } else {
       synth.cancel();
+      clearSilenceTimer();
       recognitionRef.current?.stop();
       setSpeaking(false);
       setListening(false);
     }
-  }, [speak, synth]);
+  }, [speak, synth, clearSilenceTimer]);
 
-  // Call Claude for anything that isn't a fast local command
   const askClaude = useCallback(async (transcript: string) => {
     try {
       const context = {
@@ -344,27 +341,30 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
           progress: p.progress, status: p.status,
         })),
       };
-      const res = await fetch('/api/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: transcript, history: historyRef.current.slice(-6), context }),
+      const claudeHistory = historyRef.current.slice(-6).map(t => ({
+        role: t.role === "jarvis" ? "assistant" : "user" as const,
+        content: t.text,
+      }));
+      const res = await fetch("/api/voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: transcript, history: claudeHistory, context }),
       });
-      if (!res.ok) throw new Error('API error');
+      if (!res.ok) throw new Error("API error");
       const { response } = await res.json();
-      if (!response) throw new Error('Empty response');
-      // Track conversation history
+      if (!response) throw new Error("Empty response");
       historyRef.current = [
         ...historyRef.current,
-        { role: 'user' as const, content: transcript },
-        { role: 'assistant' as const, content: response },
-      ].slice(-12);
+        { role: "user" as const, text: transcript, timestamp: Date.now() },
+        { role: "jarvis" as const, text: response, timestamp: Date.now() + 1 },
+      ].slice(-20);
       speak(response);
     } catch {
       speak("I'm having trouble reaching my thinking engine right now. Try again in a moment, P Wal.");
     }
   }, [projects, speak]);
 
-  // Stable ref for processCommand (avoids stale closure in rec.onresult)
+  // Stable ref so rec.onresult never goes stale
   const processCommandRef = useRef((_transcript: string) => {});
 
   const processCommand = useCallback(
@@ -372,7 +372,7 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
       const t = transcript.toLowerCase().trim();
       const pick = (opts: string[]) => opts[Math.floor(Math.random() * opts.length)];
 
-      // ── Summon / wake word — only when COS isn't already speaking ───────
+      // ── Wake word / summon ────────────────────────────────────────────────
       if (
         !speakingRef.current && (
           t === "assistant" || t === "agent" || t === "cos" || t === "chief" ||
@@ -387,13 +387,13 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         return;
       }
 
-      // ── Conversation mode (local — no round-trip needed) ─────────────────
+      // ── Conversation mode toggles ──────────────────────────────────────────
       if (has(t, "conversation mode", "keep listening", "stay on", "hands free", "keep talking")) {
         conversationModeRef.current = true;
         speak("I'm with you. Keep talking — I'll stay right here.");
         return;
       }
-      if (has(t, "stop listening", "go quiet", "go to sleep", "stand by", "that's all", "thats all", "goodbye", "good night", "bye")) {
+      if (has(t, "stop listening", "go quiet", "go to sleep", "stand by")) {
         conversationModeRef.current = false;
         speak(pick([
           "Understood. I'll be right here when you need me. Have a good one, P Wal.",
@@ -404,103 +404,17 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         return;
       }
 
-      // ── Introduce all agents ─────────────────────────────────────────────
-      if (
-        has(t, "introduce", "show me all", "show me my", "tell me about all", "list all", "list my",
-               "show all", "show my", "all agents", "all projects", "present the",
-               "walk me through", "take me through", "run me through", "walk through",
-               "tell me about your", "brief me on", "run the agents", "read me",
-               "show the team", "meet the agents", "meet the team", "agents") ||
-        (has(t, "who") && has(t, "agent", "project", "running", "working"))
-      ) {
-        // Chain agents via onDone — never cuts off mid-sentence
-        const introNext = (idx: number) => {
-          if (idx >= projects.length) {
-            setTimeout(() => onHighlightProject(null), 800);
-            return;
-          }
-          const p = projects[idx];
-          onHighlightProject(p.id);
-          const fullLine = `${p.name}. ${p.title}. ${p.voiceIntro} Current progress: ${p.progress} percent. Status: ${p.status}.`;
-          speak(fullLine, () => setTimeout(() => introNext(idx + 1), 700));
-        };
-        speak(
-          pick([
-            "Alright P Wal, let me walk you through your full command center.",
-            "Copy that. Here's your complete team briefing.",
-            "Standing by. Let me introduce every agent now.",
-          ]),
-          () => setTimeout(() => introNext(0), 500)
-        );
-        return;
-      }
-
-      // ── Status report ────────────────────────────────────────────────────
-      if (
-        has(t, "status", "report", "update", "how are things", "how's everything",
-               "hows everything", "overview", "summary", "what's going on",
-               "whats going on", "what's happening", "whats happening",
-               "check in", "give me a rundown", "rundown", "how we doing",
-               "how we looking", "how's it looking", "where are we")
-      ) {
-        const active = projects.filter((p) => p.status === "Active");
-        const avg = Math.round(active.reduce((s, p) => s + p.progress, 0) / active.length);
-        speak(pick([
-          `Honestly? Things look solid. You've got ${active.length} agents running, averaging ${avg} percent across active missions. No red flags anywhere — you're in a good position.`,
-          `${active.length} agents online, ${avg} percent average. It's clean, P Wal. Everything's holding. Keep doing what you're doing.`,
-          `Quick rundown — ${active.length} active agents, mission progress at ${avg} percent overall. No issues. The work is moving.`,
-        ]));
-        return;
-      }
-
-      // ── Progress / how far along ─────────────────────────────────────────
-      if (has(t, "how far", "how much progress", "progress overall", "overall progress", "how close", "percentage")) {
-        const active = projects.filter((p) => p.status === "Active");
-        const avg = Math.round(active.reduce((s, p) => s + p.progress, 0) / active.length);
-        speak(`Across all active missions, you're at ${avg} percent overall. ${projects.map(p => `${p.name} at ${p.progress}`).join(", ")} percent.`);
-        return;
-      }
-
-      // ── Threat check ─────────────────────────────────────────────────────
-      if (has(t, "threat", "security", "intrusion", "attack", "breach", "hack", "safe", "danger", "any issues", "all good")) {
-        speak(pick([
-          "Security sweep complete. No active intrusions. All perimeters are secure. You're clear, P Wal.",
-          "All clear on the perimeter. No threats detected. Systems are secure.",
-          "We're clean. No breaches, no flags. Command center is locked down tight.",
-        ]));
-        return;
-      }
-
-      // ── Time ─────────────────────────────────────────────────────────────
-      if (has(t, "what time", "time is it", "current time", "tell me the time", "what's the time")) {
-        speak(`It's ${getTimeString()} right now.`);
-        return;
-      }
-
-      // ── Date ─────────────────────────────────────────────────────────────
-      if (has(t, "what day", "what's today", "today's date", "what date")) {
-        const d = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-        speak(`Today is ${d}.`);
-        return;
-      }
-
-      // ── Weather ──────────────────────────────────────────────────────────
+      // ── Weather (local async — skip engine round-trip) ────────────────────
       if (has(t, "weather", "temperature", "outside", "forecast", "how's the weather", "what's it like outside")) {
         fetchWeather().then((w) => speak(`Outside right now you've got ${w}.`));
         return;
       }
 
-      // ── Scripture ────────────────────────────────────────────────────────
-      if (has(t, "scripture", "verse", "word of the day", "bible", "the word", "read me a verse", "give me a verse")) {
-        speak(`Here's your word. ${getDailyVerse()}`);
-        return;
-      }
-
-      // ── Schedule / what's next ────────────────────────────────────────────
-      if (has(t, "what's next", "whats next", "what should i do", "schedule", "what's on", "agenda", "what's my", "what time is")) {
+      // ── Schedule / what's next ─────────────────────────────────────────────
+      if (has(t, "what's next", "whats next", "what should i do", "schedule", "what's on", "agenda")) {
         const h = new Date().getHours();
         let next = "";
-        if (h < 9)  next = "You've got morning prep and commute coming up at 7. Then your 9-to-5 shift at 9.";
+        if (h < 9)  next = "You've got morning prep coming up. Then your 9-to-5 shift at 9.";
         else if (h < 17) next = `You're in your work shift right now. Free time starts at 5 PM — that's ${17 - h} hour${17 - h !== 1 ? "s" : ""} away.`;
         else if (h < 19) next = "You're in family time right now. Ministry hour starts at 7 PM.";
         else if (h < 21) next = "Ministry hour is active. Chef Studio window opens at 8:30.";
@@ -510,45 +424,56 @@ export function useVoiceAssistant({ projects, onHighlightProject, onVoiceRespons
         return;
       }
 
-      // ── Specific project by name ──────────────────────────────────────────
-      const matchedProject = projects.find((p) => {
-        const name = p.name.toLowerCase();
-        const id = p.id.toLowerCase();
-        const idSpaced = p.id.replace(/-/g, " ").toLowerCase();
-        const words = name.split(" ");
-        return (
-          t.includes(name) || t.includes(id) || t.includes(idSpaced) ||
-          words.some(w => w.length > 3 && t.includes(w))
-        );
-      });
+      // ── Conversation engine ────────────────────────────────────────────────
+      const result = processInput(transcript, historyRef.current, projects);
 
-      if (matchedProject && has(t, "open", "launch", "start", "go to", "take me to", "show me", "run", "visit", "pull up", "load")) {
-        speak(`Opening ${matchedProject.name} now.`);
-        setTimeout(() => window.open(matchedProject.url, "_blank"), 1000);
+      if (result.confidence === "low") {
+        askClaude(transcript);
         return;
       }
 
-      if (matchedProject && has(t, "how is", "how's", "hows", "doing", "progress", "update on", "status of", "what about", "tell me about", "how far", "where is")) {
-        speak(
-          `${matchedProject.name} is at ${matchedProject.progress} percent. Status: ${matchedProject.status}. Last activity was ${matchedProject.lastActivity}.`
-        );
-        return;
+      // Track history (max 10 exchanges = 20 turns)
+      const now = Date.now();
+      historyRef.current = [
+        ...historyRef.current,
+        { role: "user" as const, text: transcript, timestamp: now },
+        { role: "jarvis" as const, text: result.response, timestamp: now + 1 },
+      ].slice(-20);
+
+      // Execute action
+      if (result.action) {
+        const { type, url, projectId, durationMs } = result.action;
+        if (type === "open-url" && url) {
+          setTimeout(() => window.open(url, "_blank"), 1000);
+        } else if (type === "highlight-project" && projectId) {
+          onHighlightProject(projectId);
+          setTimeout(() => onHighlightProject(null), durationMs ?? 5000);
+        } else if (type === "introduce-all") {
+          const introNext = (idx: number) => {
+            if (idx >= projects.length) {
+              setTimeout(() => onHighlightProject(null), 800);
+              return;
+            }
+            const p = projects[idx];
+            onHighlightProject(p.id);
+            const line = `${p.name}. ${p.title}. ${p.voiceIntro} Current progress: ${p.progress} percent. Status: ${p.status}.`;
+            speak(line, () => setTimeout(() => introNext(idx + 1), 700));
+          };
+          speak(result.response, () => setTimeout(() => introNext(0), 500));
+          return;
+        }
       }
 
-      if (matchedProject) {
-        speak(matchedProject.voiceIntro);
-        onHighlightProject(matchedProject.id);
-        setTimeout(() => onHighlightProject(null), 5000);
-        return;
+      // Speak response — optional follow-up after a pause
+      if (result.followUp) {
+        speak(result.response, () => setTimeout(() => speak(result.followUp!), 800));
+      } else {
+        speak(result.response);
       }
-
-      // ── Claude fallback — anything not handled locally ────────────────────
-      askClaude(transcript);
     },
     [projects, onHighlightProject, speak, askClaude]
   );
 
-  // Keep processCommandRef in sync so rec.onresult never goes stale
   processCommandRef.current = processCommand;
 
   return { speak, greet, startListening, stopListening, toggleConversationMode, wakeAndListen, listening, speaking, permissionDenied };
